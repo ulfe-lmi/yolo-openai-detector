@@ -1,0 +1,32 @@
+# Initialization Package Manifest
+
+- `.env.example`
+- `.github/workflows/.gitkeep`
+- `.gitignore`
+- `AGENTS.md`
+- `CLAUDE.md`
+- `PROJECT_CHARTER.md`
+- `README.md`
+- `docs/adr/0001-product-boundary.md`
+- `docs/adr/0002-openai-compatible-chat-completions.md`
+- `docs/adr/0003-base64-data-url-only.md`
+- `docs/adr/0004-cpu-only-inference.md`
+- `docs/api-contract.md`
+- `docs/architecture.md`
+- `docs/compatibility-matrix.md`
+- `docs/dependency-policy.md`
+- `docs/handoffs/README.md`
+- `docs/prompts/strategic-review-template.md`
+- `docs/release-checklist.md`
+- `docs/reviews/README.md`
+- `docs/roadmap.md`
+- `docs/security.md`
+- `docs/testing-strategy.md`
+- `docs/work-orders/0001-api-skeleton.md`
+- `docs/work-orders/0002-image-parser.md`
+- `docs/work-orders/0003-cpu-yolo-detection.md`
+- `docs/work-orders/0004-openai-sdk-smoke-and-docs.md`
+- `docs/work-orders/0005-packaging-deployment.md`
+- `pyproject.toml`
+- `src/yolo_openai_detector/.gitkeep`
+- `tests/.gitkeep`
