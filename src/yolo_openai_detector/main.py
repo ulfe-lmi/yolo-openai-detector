@@ -7,6 +7,7 @@ from fastapi.exceptions import RequestValidationError
 
 from yolo_openai_detector.auth import require_api_key
 from yolo_openai_detector.config import Settings, get_settings
+from yolo_openai_detector.detector import StubDetector
 from yolo_openai_detector.image_input import (
     extract_single_image_data_url,
     validate_and_decode_image,
@@ -14,7 +15,7 @@ from yolo_openai_detector.image_input import (
 from yolo_openai_detector.openai_compat import (
     MODEL_ID,
     OpenAIError,
-    chat_completion_stub_response,
+    chat_completion_response,
     error_response,
     malformed_request_error,
     models_response,
@@ -66,13 +67,25 @@ def create_app() -> FastAPI:
             max_image_bytes=settings.max_image_bytes,
             max_image_pixels=settings.max_image_pixels,
         )
-        return chat_completion_stub_response(
+        detection_result = StubDetector().detect(image)
+        return chat_completion_response(
             settings.model_id,
-            image={
-                "mime_type": image.mime_type,
-                "width": image.width,
-                "height": image.height,
-                "bytes": image.bytes,
+            content={
+                "model": settings.model_id,
+                "objects": [
+                    {
+                        "label": detection.label,
+                        "confidence": detection.confidence,
+                        "bbox_xyxy": list(detection.bbox_xyxy),
+                    }
+                    for detection in detection_result.objects
+                ],
+                "image": {
+                    "mime_type": image.mime_type,
+                    "width": image.width,
+                    "height": image.height,
+                    "bytes": image.bytes,
+                },
             },
         )
 

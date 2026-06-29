@@ -9,6 +9,8 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 from yolo_openai_detector.config import get_settings
+from yolo_openai_detector.detector import StubDetector
+from yolo_openai_detector.image_input import ValidatedImage
 from yolo_openai_detector.main import app
 
 client = TestClient(app)
@@ -119,8 +121,7 @@ def test_chat_accepts_valid_single_image_data_url_request():
     content = assistant_content(response)
     assert content == {
         "model": "yolo-cpu-detector",
-        "status": "not_implemented",
-        "message": "YOLO inference is not implemented yet.",
+        "objects": [],
         "image": {
             "mime_type": "image/jpeg",
             "width": 3,
@@ -128,6 +129,7 @@ def test_chat_accepts_valid_single_image_data_url_request():
             "bytes": len(VALID_IMAGE_BYTES),
         },
     }
+    assert "status" not in content
     assert body["usage"] == {
         "prompt_tokens": 0,
         "completion_tokens": 0,
@@ -346,7 +348,9 @@ def test_chat_accepts_valid_png_data_url_with_image_metadata():
     )
 
     assert response.status_code == 200
-    assert assistant_content(response)["image"] == {
+    content = assistant_content(response)
+    assert content["objects"] == []
+    assert content["image"] == {
         "mime_type": "image/png",
         "width": 4,
         "height": 5,
@@ -397,3 +401,11 @@ def test_chat_rejects_malformed_body_with_openai_error_shape():
     )
 
     assert_openai_error(response, status_code=400, code="malformed_request")
+
+
+def test_stub_detector_returns_empty_object_list():
+    image = ValidatedImage(mime_type="image/jpeg", width=3, height=2, bytes=631)
+
+    result = StubDetector().detect(image)
+
+    assert result.objects == []
