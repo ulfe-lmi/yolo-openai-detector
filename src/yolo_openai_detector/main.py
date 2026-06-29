@@ -7,7 +7,10 @@ from fastapi.exceptions import RequestValidationError
 
 from yolo_openai_detector.auth import require_api_key
 from yolo_openai_detector.config import Settings, get_settings
-from yolo_openai_detector.image_input import extract_single_image_data_url
+from yolo_openai_detector.image_input import (
+    extract_single_image_data_url,
+    validate_and_decode_image,
+)
 from yolo_openai_detector.openai_compat import (
     MODEL_ID,
     OpenAIError,
@@ -57,8 +60,21 @@ def create_app() -> FastAPI:
                 code="model_not_found",
             )
 
-        extract_single_image_data_url(payload)
-        return chat_completion_stub_response(settings.model_id)
+        image_data_url = extract_single_image_data_url(payload)
+        image = validate_and_decode_image(
+            image_data_url,
+            max_image_bytes=settings.max_image_bytes,
+            max_image_pixels=settings.max_image_pixels,
+        )
+        return chat_completion_stub_response(
+            settings.model_id,
+            image={
+                "mime_type": image.mime_type,
+                "width": image.width,
+                "height": image.height,
+                "bytes": image.bytes,
+            },
+        )
 
     return app
 
