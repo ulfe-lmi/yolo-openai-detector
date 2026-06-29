@@ -113,7 +113,22 @@ Examples that should be ignored or rejected consistently:
 
 Document the final choice in implementation.
 
-### Successful response
+### Current skeleton response
+
+The initial API skeleton validates authentication, model name, request shape,
+and image data URL input. It does not run YOLO inference yet.
+
+For the skeleton implementation, the assistant `content` is JSON text:
+
+```json
+{
+  "model": "yolo-cpu-detector",
+  "status": "not_implemented",
+  "message": "YOLO inference is not implemented in this skeleton PR."
+}
+```
+
+### Target successful response after inference is implemented
 
 Return an OpenAI-shaped chat completion object. The assistant `content` is JSON text.
 

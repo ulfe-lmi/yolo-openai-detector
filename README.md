@@ -41,13 +41,15 @@ The assistant message content is JSON text containing object detections.
 
 ## Current repository status
 
-This ZIP initializes the repository with governance and design files. It does **not** yet implement the FastAPI service.
+The repository now includes the first FastAPI API skeleton:
 
-Implementation should begin with:
+- fixed bearer-token authentication;
+- `GET /v1/models`;
+- `POST /v1/chat/completions`;
+- OpenAI-shaped success and error envelopes;
+- strict validation for exactly one JPEG/PNG Base64 image data URL.
 
-```text
-docs/work-orders/0001-api-skeleton.md
-```
+This PR implements API skeleton and validation only. YOLO inference is not implemented yet.
 
 ## Product boundary
 
@@ -127,9 +129,22 @@ Supported first-release MIME types:
 
 The API must reject HTTP URLs, file IDs, raw Base64 without a data URL prefix, multiple images, videos, unsupported MIME types, malformed Base64, oversized payloads, and excessive pixel counts.
 
-## Detection response format
+## Current skeleton response
 
-The assistant message content should be JSON text like:
+Until YOLO inference is implemented, `POST /v1/chat/completions` returns an
+OpenAI-shaped chat completion whose assistant message content is JSON text:
+
+```json
+{
+  "model": "yolo-cpu-detector",
+  "status": "not_implemented",
+  "message": "YOLO inference is not implemented in this skeleton PR."
+}
+```
+
+## Target detection response format
+
+After inference is added, the assistant message content should be JSON text like:
 
 ```json
 {
