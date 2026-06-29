@@ -2,26 +2,44 @@ from __future__ import annotations
 
 import base64
 import json
+import sys
 from io import BytesIO
+from types import ModuleType, SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
-from yolo_openai_detector.config import get_settings
-from yolo_openai_detector.detector import StubDetector
-from yolo_openai_detector.image_input import ValidatedImage
+from yolo_openai_detector.config import Settings, get_settings
+from yolo_openai_detector.detector import (
+    Detection,
+    DetectionResult,
+    DetectorConfigurationError,
+    StubDetector,
+    clear_detector_cache,
+    detection_response_content,
+    get_detector,
+)
+from yolo_openai_detector.image_input import (
+    ValidatedImage,
+    validate_and_decode_image,
+    validate_image_data_url,
+)
 from yolo_openai_detector.main import app
+from yolo_openai_detector.yolo_detector import UltralyticsYoloDetector
 
 client = TestClient(app)
 AUTH_HEADERS = {"Authorization": "Bearer local-dev-key"}
 
 
 @pytest.fixture(autouse=True)
-def clear_settings_cache():
+def isolate_runtime_settings(monkeypatch):
+    monkeypatch.setenv("YOLO_DETECTOR_BACKEND", "stub")
     get_settings.cache_clear()
+    clear_detector_cache()
     yield
     get_settings.cache_clear()
+    clear_detector_cache()
 
 
 def make_image_data_url(*, image_format: str = "JPEG", mime_type: str = "image/jpeg", size=(3, 2)):
@@ -130,6 +148,8 @@ def test_chat_accepts_valid_single_image_data_url_request():
         },
     }
     assert "status" not in content
+    assert "image_bytes" not in content
+    assert base64.b64encode(VALID_IMAGE_BYTES).decode("ascii") not in response.text
     assert body["usage"] == {
         "prompt_tokens": 0,
         "completion_tokens": 0,
@@ -404,8 +424,155 @@ def test_chat_rejects_malformed_body_with_openai_error_shape():
 
 
 def test_stub_detector_returns_empty_object_list():
-    image = ValidatedImage(mime_type="image/jpeg", width=3, height=2, bytes=631)
+    image = ValidatedImage(mime_type="image/jpeg", width=3, height=2, bytes=631, image_bytes=b"")
 
     result = StubDetector().detect(image)
 
     assert result.objects == []
+
+
+def test_validated_image_preserves_bytes_internally():
+    image_data_url = validate_image_data_url(VALID_IMAGE_URL)
+
+    image = validate_and_decode_image(
+        image_data_url,
+        max_image_bytes=10_000,
+        max_image_pixels=10_000,
+    )
+
+    assert image.bytes == len(VALID_IMAGE_BYTES)
+    assert image.image_bytes == VALID_IMAGE_BYTES
+
+
+def test_detection_response_content_serializes_objects_without_raw_bytes():
+    image = ValidatedImage(
+        mime_type="image/jpeg",
+        width=3,
+        height=2,
+        bytes=631,
+        image_bytes=b"raw-image-bytes",
+    )
+    detection_result = DetectionResult(
+        objects=[
+            Detection(
+                label="person",
+                confidence=0.91,
+                bbox_xyxy=(34, 52, 188, 401),
+            )
+        ]
+    )
+
+    content = detection_response_content(
+        model_id="yolo-cpu-detector",
+        detection_result=detection_result,
+        image=image,
+    )
+
+    assert content == {
+        "model": "yolo-cpu-detector",
+        "objects": [
+            {
+                "label": "person",
+                "confidence": 0.91,
+                "bbox_xyxy": [34, 52, 188, 401],
+            }
+        ],
+        "image": {
+            "mime_type": "image/jpeg",
+            "width": 3,
+            "height": 2,
+            "bytes": 631,
+        },
+    }
+    assert "image_bytes" not in json.dumps(content)
+    assert "raw-image-bytes" not in json.dumps(content)
+
+
+def test_detector_factory_selects_real_detector_by_default(monkeypatch):
+    monkeypatch.delenv("YOLO_DETECTOR_BACKEND", raising=False)
+    settings = Settings(_env_file=None)
+
+    detector = get_detector(settings)
+
+    assert isinstance(detector, UltralyticsYoloDetector)
+    assert detector.device == "cpu"
+    assert settings.device == "cpu"
+
+
+def test_detector_factory_can_select_stub_backend():
+    settings = Settings(_env_file=None, detector_backend="stub")
+
+    detector = get_detector(settings)
+
+    assert isinstance(detector, StubDetector)
+
+
+def test_detector_factory_rejects_unsupported_backend():
+    settings = Settings(_env_file=None, detector_backend="not-real")
+
+    with pytest.raises(DetectorConfigurationError, match="Unsupported detector backend"):
+        get_detector(settings)
+
+
+def test_ultralytics_detector_can_be_unit_tested_without_downloading_weights(monkeypatch):
+    captured = {}
+
+    class FakeYOLO:
+        names = {0: "person", 1: "cat"}
+
+        def __init__(self, weights):
+            captured["weights"] = weights
+
+        def predict(self, source, conf, iou, imgsz, device, verbose):
+            captured["source_mode"] = source.mode
+            captured["conf"] = conf
+            captured["iou"] = iou
+            captured["imgsz"] = imgsz
+            captured["device"] = device
+            captured["verbose"] = verbose
+            return [
+                SimpleNamespace(
+                    boxes=SimpleNamespace(
+                        xyxy=[
+                            [20.0, 10.0, 30.0, 40.0],
+                            [1.2, 2.6, 10.4, 20.6],
+                        ],
+                        conf=[0.50, 0.95],
+                        cls=[1, 0],
+                    )
+                )
+            ]
+
+    fake_ultralytics = ModuleType("ultralytics")
+    fake_ultralytics.YOLO = FakeYOLO
+    monkeypatch.setitem(sys.modules, "ultralytics", fake_ultralytics)
+
+    detector = UltralyticsYoloDetector(
+        model_weights="fake.pt",
+        confidence_threshold=0.6,
+        iou_threshold=0.7,
+        image_size=640,
+        device="cpu",
+    )
+    image = ValidatedImage(
+        mime_type="image/jpeg",
+        width=3,
+        height=2,
+        bytes=len(VALID_IMAGE_BYTES),
+        image_bytes=VALID_IMAGE_BYTES,
+    )
+
+    result = detector.detect(image)
+
+    assert captured == {
+        "weights": "fake.pt",
+        "source_mode": "RGB",
+        "conf": 0.6,
+        "iou": 0.7,
+        "imgsz": 640,
+        "device": "cpu",
+        "verbose": False,
+    }
+    assert result.objects == [
+        Detection(label="person", confidence=0.95, bbox_xyxy=(1, 3, 10, 21))
+    ]

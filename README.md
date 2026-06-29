@@ -41,7 +41,7 @@ The assistant message content is JSON text containing object detections.
 
 ## Current repository status
 
-The repository now includes the first FastAPI API skeleton:
+The repository now includes the FastAPI API service:
 
 - fixed bearer-token authentication;
 - `GET /v1/models`;
@@ -49,10 +49,11 @@ The repository now includes the first FastAPI API skeleton:
 - OpenAI-shaped success and error envelopes;
 - strict validation for exactly one JPEG/PNG Base64 image data URL;
 - Pillow-based image decoding, byte limits, pixel limits, and image metadata;
-- a detector interface with a deterministic stub detector returning an empty object list.
+- a detector interface;
+- real CPU YOLO object detection through Ultralytics.
 
-The current implementation has a detector interface and deterministic stub detector. Real YOLO
-inference is not implemented yet.
+The default runtime detector is Ultralytics YOLO on CPU. A deterministic stub detector remains
+available for tests.
 
 ## Product boundary
 
@@ -115,6 +116,24 @@ export YOLO_MAX_IMAGE_PIXELS=12000000
 Defaults are 5,242,880 decoded bytes and 12,000,000 pixels. Size-limit failures return
 OpenAI-shaped errors with HTTP `413` and code `image_too_large`.
 
+## Detector configuration
+
+The default detector backend is Ultralytics YOLO on CPU:
+
+```bash
+export YOLO_DETECTOR_BACKEND=ultralytics
+export YOLO_MODEL_WEIGHTS=yolo11n.pt
+export YOLO_CONFIDENCE_THRESHOLD=0.25
+export YOLO_IOU_THRESHOLD=0.7
+export YOLO_IMAGE_SIZE=640
+export YOLO_DEVICE=cpu
+```
+
+`YOLO_DEVICE` must remain `cpu`. GPU/CUDA execution is outside this project's scope.
+
+Ultralytics may download the configured weights on first use unless the weights are already
+available in the runtime environment. Do not commit downloaded `.pt` weight files.
+
 ## OpenAI-compatible endpoints
 
 | Endpoint | Purpose |
@@ -144,27 +163,10 @@ Supported first-release MIME types:
 
 The API must reject HTTP URLs, file IDs, raw Base64 without a data URL prefix, multiple images, videos, unsupported MIME types, malformed Base64, oversized payloads, and excessive pixel counts.
 
-## Current detector stub response
+## Detection response
 
-Until YOLO inference is implemented, `POST /v1/chat/completions` returns an OpenAI-shaped
-chat completion whose assistant message content is JSON text with deterministic empty detections:
-
-```json
-{
-  "model": "yolo-cpu-detector",
-  "objects": [],
-  "image": {
-    "mime_type": "image/jpeg",
-    "width": 640,
-    "height": 480,
-    "bytes": 123456
-  }
-}
-```
-
-## Target detection response format
-
-After inference is added, the assistant message content should be JSON text like:
+`POST /v1/chat/completions` returns an OpenAI-shaped chat completion whose assistant message
+content is JSON text:
 
 ```json
 {
@@ -177,8 +179,25 @@ After inference is added, the assistant message content should be JSON text like
     }
   ],
   "image": {
+    "mime_type": "image/jpeg",
     "width": 640,
-    "height": 480
+    "height": 480,
+    "bytes": 123456
+  }
+}
+```
+
+Images with no detections return:
+
+```json
+{
+  "model": "yolo-cpu-detector",
+  "objects": [],
+  "image": {
+    "mime_type": "image/jpeg",
+    "width": 640,
+    "height": 480,
+    "bytes": 123456
   }
 }
 ```
@@ -196,7 +215,22 @@ python -m pip install -U pip
 python -m pip install -e ".[dev]"
 ```
 
-Inference dependencies may be added later under a separate work order. Do not download YOLO weights in ordinary unit tests.
+Run the service locally:
+
+```bash
+export YOLO_GATEWAY_API_KEY="local-dev-key"
+uvicorn yolo_openai_detector.main:app --host 127.0.0.1 --port 8000
+```
+
+Run the normal test suite without downloading model weights:
+
+```bash
+python -m pytest
+ruff check .
+```
+
+Normal tests use the deterministic stub backend or monkeypatched Ultralytics objects and do not
+download weights.
 
 ## Documentation map
 
@@ -224,3 +258,7 @@ OpenAI-compatible model discovery is represented by `/v1/models`; this project k
 ## License
 
 No license is chosen in this initialization package. Add a `LICENSE` file only after the human owner decides the repository license and confirms compatibility with the selected YOLO backend.
+
+Ultralytics YOLO code and trained models are AGPL-3.0 by default. Private, proprietary,
+commercial, SaaS/API, or embedded deployments may require an Ultralytics Enterprise License.
+This repository does not grant such a license.

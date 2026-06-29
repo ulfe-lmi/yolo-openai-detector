@@ -25,6 +25,7 @@ class ValidatedImage:
     width: int
     height: int
     bytes: int
+    image_bytes: bytes
 
 
 def extract_single_image_data_url(payload: dict[str, Any]) -> ImageDataUrl:
@@ -204,6 +205,7 @@ def validate_and_decode_image(
         width=width,
         height=height,
         bytes=byte_count,
+        image_bytes=image_bytes,
     )
 
 
