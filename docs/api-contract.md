@@ -121,21 +121,22 @@ Examples that should be ignored or rejected consistently:
 
 Document the final choice in implementation.
 
-### Current validation stub response
+### Current detector stub response
 
 The current API validates authentication, model name, request shape, image data URL input,
-Base64 decoding, Pillow image validity, byte limits, and pixel limits. It does not run YOLO
-inference yet.
+Base64 decoding, Pillow image validity, byte limits, and pixel limits. It then calls the
+detector interface, which currently uses a deterministic stub detector returning an empty object
+list.
 
-YOLO inference is still not implemented in this PR.
+The current implementation has a detector interface and deterministic stub detector. Real YOLO
+inference is not implemented yet.
 
-For the validation implementation, the assistant `content` is JSON text:
+For the current detector stub implementation, the assistant `content` is JSON text:
 
 ```json
 {
   "model": "yolo-cpu-detector",
-  "status": "not_implemented",
-  "message": "YOLO inference is not implemented yet.",
+  "objects": [],
   "image": {
     "mime_type": "image/jpeg",
     "width": 640,

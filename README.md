@@ -48,9 +48,11 @@ The repository now includes the first FastAPI API skeleton:
 - `POST /v1/chat/completions`;
 - OpenAI-shaped success and error envelopes;
 - strict validation for exactly one JPEG/PNG Base64 image data URL;
-- Pillow-based image decoding, byte limits, pixel limits, and image metadata.
+- Pillow-based image decoding, byte limits, pixel limits, and image metadata;
+- a detector interface with a deterministic stub detector returning an empty object list.
 
-Image validation is implemented. YOLO inference is still not implemented in this PR.
+The current implementation has a detector interface and deterministic stub detector. Real YOLO
+inference is not implemented yet.
 
 ## Product boundary
 
@@ -142,16 +144,15 @@ Supported first-release MIME types:
 
 The API must reject HTTP URLs, file IDs, raw Base64 without a data URL prefix, multiple images, videos, unsupported MIME types, malformed Base64, oversized payloads, and excessive pixel counts.
 
-## Current validation stub response
+## Current detector stub response
 
-Until YOLO inference is implemented, `POST /v1/chat/completions` returns an
-OpenAI-shaped chat completion whose assistant message content is JSON text:
+Until YOLO inference is implemented, `POST /v1/chat/completions` returns an OpenAI-shaped
+chat completion whose assistant message content is JSON text with deterministic empty detections:
 
 ```json
 {
   "model": "yolo-cpu-detector",
-  "status": "not_implemented",
-  "message": "YOLO inference is not implemented yet.",
+  "objects": [],
   "image": {
     "mime_type": "image/jpeg",
     "width": 640,
