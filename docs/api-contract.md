@@ -92,6 +92,14 @@ Allowed MIME types:
 - `image/jpeg`
 - `image/png`
 
+Decoded images are validated with Pillow on CPU. The service verifies the declared MIME type,
+decodes Base64, opens and verifies the image, loads it, reports dimensions, and enforces:
+
+| Environment variable | Default | Meaning |
+|---|---:|---|
+| `YOLO_MAX_IMAGE_BYTES` | `5242880` | Maximum decoded image byte count |
+| `YOLO_MAX_IMAGE_PIXELS` | `12000000` | Maximum `width * height` |
+
 Text content may be accepted but must not alter the detector behavior in MVP. The system is an object detector, not a general vision-language model.
 
 ### Unsupported request fields
@@ -113,18 +121,27 @@ Examples that should be ignored or rejected consistently:
 
 Document the final choice in implementation.
 
-### Current skeleton response
+### Current validation stub response
 
-The initial API skeleton validates authentication, model name, request shape,
-and image data URL input. It does not run YOLO inference yet.
+The current API validates authentication, model name, request shape, image data URL input,
+Base64 decoding, Pillow image validity, byte limits, and pixel limits. It does not run YOLO
+inference yet.
 
-For the skeleton implementation, the assistant `content` is JSON text:
+YOLO inference is still not implemented in this PR.
+
+For the validation implementation, the assistant `content` is JSON text:
 
 ```json
 {
   "model": "yolo-cpu-detector",
   "status": "not_implemented",
-  "message": "YOLO inference is not implemented in this skeleton PR."
+  "message": "YOLO inference is not implemented yet.",
+  "image": {
+    "mime_type": "image/jpeg",
+    "width": 640,
+    "height": 480,
+    "bytes": 123456
+  }
 }
 ```
 
@@ -216,14 +233,15 @@ Use this shape:
 | Multiple images | 400 | `multiple_images_not_supported` |
 | HTTP/HTTPS image URL | 400 | `external_image_url_not_supported` |
 | File ID | 400 | `file_id_not_supported` |
-| Raw Base64 | 400 | `invalid_image_url` |
+| Raw Base64 | 400 | `invalid_image_input` |
 | Unsupported MIME | 400 | `unsupported_image_type` |
-| Malformed Base64 | 400 | `invalid_base64` |
-| Image too large | 413/400 | `image_too_large` |
-| Pixel count too large | 413/400 | `image_too_large` |
+| Malformed Base64 | 400 | `invalid_base64_image` |
+| Bytes are not a valid image | 400 | `invalid_image_file` |
+| Image too large | 413 | `image_too_large` |
+| Pixel count too large | 413 | `image_too_large` |
 | Inference failure | 500 | `inference_error` |
 
-Choose either 400 or 413 for size-related failures and document the choice.
+Size-related failures use HTTP `413`.
 
 ## cURL example
 

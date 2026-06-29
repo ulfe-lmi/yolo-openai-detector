@@ -47,9 +47,10 @@ The repository now includes the first FastAPI API skeleton:
 - `GET /v1/models`;
 - `POST /v1/chat/completions`;
 - OpenAI-shaped success and error envelopes;
-- strict validation for exactly one JPEG/PNG Base64 image data URL.
+- strict validation for exactly one JPEG/PNG Base64 image data URL;
+- Pillow-based image decoding, byte limits, pixel limits, and image metadata.
 
-This PR implements API skeleton and validation only. YOLO inference is not implemented yet.
+Image validation is implemented. YOLO inference is still not implemented in this PR.
 
 ## Product boundary
 
@@ -100,6 +101,18 @@ Authorization: Bearer local-dev-key
 
 The implementation must compare the key using constant-time comparison and must never log it.
 
+## Image limits
+
+The image validation layer uses CPU-only Pillow decoding and these environment-driven limits:
+
+```bash
+export YOLO_MAX_IMAGE_BYTES=5242880
+export YOLO_MAX_IMAGE_PIXELS=12000000
+```
+
+Defaults are 5,242,880 decoded bytes and 12,000,000 pixels. Size-limit failures return
+OpenAI-shaped errors with HTTP `413` and code `image_too_large`.
+
 ## OpenAI-compatible endpoints
 
 | Endpoint | Purpose |
@@ -129,7 +142,7 @@ Supported first-release MIME types:
 
 The API must reject HTTP URLs, file IDs, raw Base64 without a data URL prefix, multiple images, videos, unsupported MIME types, malformed Base64, oversized payloads, and excessive pixel counts.
 
-## Current skeleton response
+## Current validation stub response
 
 Until YOLO inference is implemented, `POST /v1/chat/completions` returns an
 OpenAI-shaped chat completion whose assistant message content is JSON text:
@@ -138,7 +151,13 @@ OpenAI-shaped chat completion whose assistant message content is JSON text:
 {
   "model": "yolo-cpu-detector",
   "status": "not_implemented",
-  "message": "YOLO inference is not implemented in this skeleton PR."
+  "message": "YOLO inference is not implemented yet.",
+  "image": {
+    "mime_type": "image/jpeg",
+    "width": 640,
+    "height": 480,
+    "bytes": 123456
+  }
 }
 ```
 

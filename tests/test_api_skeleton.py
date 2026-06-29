@@ -1,14 +1,37 @@
 from __future__ import annotations
 
+import base64
 import json
+from io import BytesIO
 
+import pytest
 from fastapi.testclient import TestClient
+from PIL import Image
 
+from yolo_openai_detector.config import get_settings
 from yolo_openai_detector.main import app
 
 client = TestClient(app)
 AUTH_HEADERS = {"Authorization": "Bearer local-dev-key"}
-VALID_IMAGE_URL = "data:image/jpeg;base64,aGVsbG8="
+
+
+@pytest.fixture(autouse=True)
+def clear_settings_cache():
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+def make_image_data_url(*, image_format: str = "JPEG", mime_type: str = "image/jpeg", size=(3, 2)):
+    image = Image.new("RGB", size, color=(32, 96, 160))
+    buffer = BytesIO()
+    image.save(buffer, format=image_format)
+    image_bytes = buffer.getvalue()
+    encoded = base64.b64encode(image_bytes).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}", image_bytes
+
+
+VALID_IMAGE_URL, VALID_IMAGE_BYTES = make_image_data_url()
 
 
 def valid_payload(**overrides):
@@ -36,6 +59,10 @@ def assert_openai_error(response, *, status_code: int, code: str):
     assert body["error"]["type"] in {"invalid_request_error", "authentication_error"}
     assert body["error"]["code"] == code
     assert "param" in body["error"]
+
+
+def assistant_content(response):
+    return json.loads(response.json()["choices"][0]["message"]["content"])
 
 
 def test_app_imports_successfully():
@@ -75,7 +102,7 @@ def test_chat_rejects_wrong_auth():
     response = client.post(
         "/v1/chat/completions",
         headers={"Authorization": "Bearer wrong-key"},
-        json=valid_payload(),
+        json=valid_payload(messages="not parsed first"),
     )
 
     assert_openai_error(response, status_code=401, code="invalid_api_key")
@@ -89,11 +116,17 @@ def test_chat_accepts_valid_single_image_data_url_request():
     assert body["object"] == "chat.completion"
     assert body["model"] == "yolo-cpu-detector"
     assert body["choices"][0]["message"]["role"] == "assistant"
-    content = json.loads(body["choices"][0]["message"]["content"])
+    content = assistant_content(response)
     assert content == {
         "model": "yolo-cpu-detector",
         "status": "not_implemented",
-        "message": "YOLO inference is not implemented in this skeleton PR.",
+        "message": "YOLO inference is not implemented yet.",
+        "image": {
+            "mime_type": "image/jpeg",
+            "width": 3,
+            "height": 2,
+            "bytes": len(VALID_IMAGE_BYTES),
+        },
     }
     assert body["usage"] == {
         "prompt_tokens": 0,
@@ -107,6 +140,16 @@ def test_chat_rejects_unknown_model():
         "/v1/chat/completions",
         headers=AUTH_HEADERS,
         json=valid_payload(model="unknown-model"),
+    )
+
+    assert_openai_error(response, status_code=400, code="model_not_found")
+
+
+def test_chat_rejects_unknown_model_before_image_decoding():
+    response = client.post(
+        "/v1/chat/completions",
+        headers=AUTH_HEADERS,
+        json=valid_payload(model="unknown-model", messages="not parsed first"),
     )
 
     assert_openai_error(response, status_code=400, code="model_not_found")
@@ -177,7 +220,26 @@ def test_chat_rejects_raw_base64():
         ),
     )
 
-    assert_openai_error(response, status_code=400, code="invalid_image_url")
+    assert_openai_error(response, status_code=400, code="invalid_image_input")
+
+
+def test_chat_rejects_malformed_data_url():
+    response = client.post(
+        "/v1/chat/completions",
+        headers=AUTH_HEADERS,
+        json=valid_payload(
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": "data:image/jpeg;name=test"}}
+                    ],
+                }
+            ]
+        ),
+    )
+
+    assert_openai_error(response, status_code=400, code="invalid_image_input")
 
 
 def test_chat_rejects_unsupported_mime_prefix():
@@ -243,7 +305,71 @@ def test_chat_rejects_malformed_base64():
         ),
     )
 
-    assert_openai_error(response, status_code=400, code="invalid_base64")
+    assert_openai_error(response, status_code=400, code="invalid_base64_image")
+
+
+def test_chat_rejects_base64_that_is_not_an_image():
+    response = client.post(
+        "/v1/chat/completions",
+        headers=AUTH_HEADERS,
+        json=valid_payload(
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": "data:image/png;base64,aGVsbG8="},
+                        }
+                    ],
+                }
+            ]
+        ),
+    )
+
+    assert_openai_error(response, status_code=400, code="invalid_image_file")
+
+
+def test_chat_accepts_valid_png_data_url_with_image_metadata():
+    png_url, png_bytes = make_image_data_url(image_format="PNG", mime_type="image/png", size=(4, 5))
+    response = client.post(
+        "/v1/chat/completions",
+        headers=AUTH_HEADERS,
+        json=valid_payload(
+            messages=[
+                {
+                    "role": "user",
+                    "content": [{"type": "image_url", "image_url": {"url": png_url}}],
+                }
+            ]
+        ),
+    )
+
+    assert response.status_code == 200
+    assert assistant_content(response)["image"] == {
+        "mime_type": "image/png",
+        "width": 4,
+        "height": 5,
+        "bytes": len(png_bytes),
+    }
+
+
+def test_chat_enforces_decoded_byte_limit(monkeypatch):
+    monkeypatch.setenv("YOLO_MAX_IMAGE_BYTES", "8")
+    get_settings.cache_clear()
+
+    response = client.post("/v1/chat/completions", headers=AUTH_HEADERS, json=valid_payload())
+
+    assert_openai_error(response, status_code=413, code="image_too_large")
+
+
+def test_chat_enforces_pixel_limit(monkeypatch):
+    monkeypatch.setenv("YOLO_MAX_IMAGE_PIXELS", "5")
+    get_settings.cache_clear()
+
+    response = client.post("/v1/chat/completions", headers=AUTH_HEADERS, json=valid_payload())
+
+    assert_openai_error(response, status_code=413, code="image_too_large")
 
 
 def test_chat_rejects_file_id():

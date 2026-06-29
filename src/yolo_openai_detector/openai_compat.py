@@ -46,12 +46,19 @@ def models_response(model_id: str = MODEL_ID) -> dict[str, Any]:
     }
 
 
-def chat_completion_stub_response(model_id: str = MODEL_ID) -> dict[str, Any]:
+def chat_completion_stub_response(
+    model_id: str = MODEL_ID,
+    *,
+    image: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     content = {
         "model": model_id,
         "status": "not_implemented",
-        "message": "YOLO inference is not implemented in this skeleton PR.",
+        "message": "YOLO inference is not implemented yet.",
     }
+    if image is not None:
+        content["image"] = image
+
     return {
         "id": "chatcmpl-local-000000000000",
         "object": "chat.completion",
