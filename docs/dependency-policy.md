@@ -23,26 +23,28 @@ Recommended development dependencies:
 
 ## YOLO backend policy
 
-The project may later use a YOLO backend such as Ultralytics, ONNX Runtime with exported YOLO weights, or another compatible CPU detector.
+The project currently uses Ultralytics as the default YOLO backend.
 
-Do not add a YOLO backend until the API skeleton and image parser are stable.
+Current selection:
 
-Before adding a YOLO backend, the coding agent must report:
-
-- selected package;
-- selected model/weights;
-- license;
-- whether the license is compatible with the intended repository license and deployment;
-- whether weights are downloaded automatically;
-- where weights are cached;
-- whether CPU-only inference is supported;
-- how tests avoid large downloads.
+- selected package: `ultralytics`;
+- selected model/weights: `yolo11n.pt`;
+- license: AGPL-3.0 by default for Ultralytics YOLO software/models;
+- CPU-only inference: required through `YOLO_DEVICE=cpu`;
+- ordinary tests: use the stub backend or monkeypatched Ultralytics objects and must not download weights.
 
 ## Ultralytics note
 
 Ultralytics documentation and licensing pages state that Ultralytics YOLO software/models are AGPL-3.0 by default, with enterprise licensing available for uses that cannot comply with AGPL obligations.
 
 This may be acceptable for an open-source academic repository, but it is a human decision. The agent must not silently choose a dependency that imposes license obligations the project owner did not approve.
+
+Ultralytics YOLO code and trained models are AGPL-3.0 by default. Private, proprietary,
+commercial, SaaS/API, or embedded deployments may require an Ultralytics Enterprise License.
+This repository does not grant such a license.
+
+Ultralytics may download configured model weights on first use unless they are already available
+in the runtime environment. Do not commit downloaded weights.
 
 ## Weight files
 

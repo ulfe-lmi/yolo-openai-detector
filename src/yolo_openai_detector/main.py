@@ -7,7 +7,12 @@ from fastapi.exceptions import RequestValidationError
 
 from yolo_openai_detector.auth import require_api_key
 from yolo_openai_detector.config import Settings, get_settings
-from yolo_openai_detector.detector import StubDetector
+from yolo_openai_detector.detector import (
+    DetectorConfigurationError,
+    DetectorRuntimeError,
+    detection_response_content,
+    get_detector,
+)
 from yolo_openai_detector.image_input import (
     extract_single_image_data_url,
     validate_and_decode_image,
@@ -67,26 +72,24 @@ def create_app() -> FastAPI:
             max_image_bytes=settings.max_image_bytes,
             max_image_pixels=settings.max_image_pixels,
         )
-        detection_result = StubDetector().detect(image)
+
+        try:
+            detection_result = get_detector(settings).detect(image)
+        except (DetectorConfigurationError, DetectorRuntimeError) as exc:
+            raise OpenAIError(
+                message="Object detection inference failed.",
+                status_code=500,
+                param=None,
+                code="inference_error",
+            ) from exc
+
         return chat_completion_response(
             settings.model_id,
-            content={
-                "model": settings.model_id,
-                "objects": [
-                    {
-                        "label": detection.label,
-                        "confidence": detection.confidence,
-                        "bbox_xyxy": list(detection.bbox_xyxy),
-                    }
-                    for detection in detection_result.objects
-                ],
-                "image": {
-                    "mime_type": image.mime_type,
-                    "width": image.width,
-                    "height": image.height,
-                    "bytes": image.bytes,
-                },
-            },
+            content=detection_response_content(
+                model_id=settings.model_id,
+                detection_result=detection_result,
+                image=image,
+            ),
         )
 
     return app

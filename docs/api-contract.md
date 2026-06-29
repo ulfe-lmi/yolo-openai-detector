@@ -102,6 +102,24 @@ decodes Base64, opens and verifies the image, loads it, reports dimensions, and 
 
 Text content may be accepted but must not alter the detector behavior in MVP. The system is an object detector, not a general vision-language model.
 
+### Detector configuration
+
+The default detector backend is real CPU YOLO inference through Ultralytics:
+
+| Environment variable | Default | Meaning |
+|---|---:|---|
+| `YOLO_DETECTOR_BACKEND` | `ultralytics` | Runtime detector backend |
+| `YOLO_MODEL_WEIGHTS` | `yolo11n.pt` | Detection model weights |
+| `YOLO_CONFIDENCE_THRESHOLD` | `0.25` | Minimum confidence returned |
+| `YOLO_IOU_THRESHOLD` | `0.7` | Ultralytics prediction IoU threshold |
+| `YOLO_IMAGE_SIZE` | `640` | Ultralytics prediction image size |
+| `YOLO_DEVICE` | `cpu` | Required inference device |
+
+`YOLO_DEVICE` must be `cpu`. CUDA/GPU execution is not part of this API contract.
+
+Ultralytics may download the configured model weights on first use unless the weights are already
+available in the runtime environment. Weight files must not be committed.
+
 ### Unsupported request fields
 
 If standard OpenAI fields appear, the implementation may ignore them unless they create ambiguity or unsupported behavior.
@@ -121,17 +139,12 @@ Examples that should be ignored or rejected consistently:
 
 Document the final choice in implementation.
 
-### Current detector stub response
+### Current detection response
 
 The current API validates authentication, model name, request shape, image data URL input,
-Base64 decoding, Pillow image validity, byte limits, and pixel limits. It then calls the
-detector interface, which currently uses a deterministic stub detector returning an empty object
-list.
-
-The current implementation has a detector interface and deterministic stub detector. Real YOLO
-inference is not implemented yet.
-
-For the current detector stub implementation, the assistant `content` is JSON text:
+Base64 decoding, Pillow image validity, byte limits, and pixel limits. It then runs the
+configured CPU detector and returns normalized detections. For images with no detections, the
+assistant `content` is JSON text:
 
 ```json
 {
@@ -146,7 +159,7 @@ For the current detector stub implementation, the assistant `content` is JSON te
 }
 ```
 
-### Target successful response after inference is implemented
+### Successful response envelope
 
 Return an OpenAI-shaped chat completion object. The assistant `content` is JSON text.
 
@@ -163,7 +176,7 @@ Example:
       "index": 0,
       "message": {
         "role": "assistant",
-        "content": "{\"model\":\"yolo-cpu-detector\",\"objects\":[],\"image\":{\"width\":640,\"height\":480}}"
+        "content": "{\"model\":\"yolo-cpu-detector\",\"objects\":[],\"image\":{\"mime_type\":\"image/jpeg\",\"width\":640,\"height\":480,\"bytes\":123456}}"
       },
       "finish_reason": "stop"
     }
@@ -193,8 +206,10 @@ The assistant content string must parse as JSON:
     }
   ],
   "image": {
+    "mime_type": "image/jpeg",
     "width": 640,
-    "height": 480
+    "height": 480,
+    "bytes": 123456
   }
 }
 ```
@@ -207,6 +222,7 @@ Rules:
 - Coordinates are pixel coordinates.
 - Confidence is numeric, not a percentage string.
 - No masks, track IDs, frame IDs, or job IDs.
+- Raw image bytes are never returned.
 
 ## Errors
 

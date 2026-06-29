@@ -16,7 +16,8 @@ dependencies = [
   "uvicorn[standard]>=0.30",
   "pydantic>=2.7",
   "pydantic-settings>=2.2",
-  "pillow>=10.0"
+  "pillow>=10.0",
+  "ultralytics>=8.3"
 ]
 
 [project.optional-dependencies]
@@ -28,8 +29,7 @@ dev = [
   "mypy>=1.10"
 ]
 inference = [
-  # Add only after human approval of backend and license implications.
-  # "ultralytics>=8.3"
+  "ultralytics>=8.3"
 ]
 
 [tool.setuptools.packages.find]
